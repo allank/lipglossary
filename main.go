@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,6 +15,8 @@ type model struct {
 	activeTab int
 	width     int
 	height    int
+	viewport  viewport.Model
+	ready     bool
 }
 
 func (m model) Init() tea.Cmd {
@@ -21,10 +24,28 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width, msg.Height-3) // -3 for tabs + border
+			m.viewport.YPosition = 3
+			m.ready = true
+		} else {
+			m.viewport.Width = msg.Width
+			m.viewport.Height = msg.Height - 3
+		}
+
+		// Re-render content on resize
+		m.viewport.SetContent(renderAnsi256(m.width))
+
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("q", "ctrl+c"))):
@@ -33,10 +54,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = (m.activeTab + 1) % 2
 		case key.Matches(msg, key.NewBinding(key.WithKeys("left", "h"))):
 			m.activeTab = (m.activeTab - 1 + 2) % 2
+		case m.activeTab == 1 && key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))):
+			m.viewport.ViewDown()
+			return m, nil
+		case m.activeTab == 1 && key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+u"))):
+			m.viewport.ViewUp()
+			return m, nil
 		}
 	}
 
-	return m, nil
+	// Handle viewport updates only if active tab is ANSI 256
+	if m.activeTab == 1 {
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
@@ -75,11 +108,14 @@ func (m model) View() string {
 		switch m.activeTab {
 		case 0:
 			tabContent = renderAnsi16(m.width, contentHeight)
+			doc.WriteString(windowStyle.Width(m.width - windowStyle.GetHorizontalFrameSize()).Height(contentHeight).Render(tabContent))
 		case 1:
-			tabContent = renderAnsi256(m.width, contentHeight)
+			// Ensure content is set (in case of initial load or tab switch if we want to be safe, though resize handles it mostly)
+			// But for static content that depends on width, we might want to update it if width changed?
+			// Actually, Update handles SetContent on resize.
+			// Just render the viewport.
+			doc.WriteString(m.viewport.View())
 		}
-
-		doc.WriteString(windowStyle.Width(m.width - windowStyle.GetHorizontalFrameSize()).Height(contentHeight).Render(tabContent))
 	}
 	return doc.String()
 }
@@ -104,37 +140,21 @@ func renderAnsi16(width, height int) string {
 	return s.String()
 }
 
-func renderAnsi256(width, height int) string {
-	var rows [][]string
-	for i := 0; i < 16; i++ {
-		var row []string
-		for j := 0; j < 16; j++ {
-			color := i*16 + j
-			style := lipgloss.NewStyle().
-				Width(width/16-4).
-				Height(height/16).
-				Align(lipgloss.Center, lipgloss.Center).
-				Background(lipgloss.Color(fmt.Sprintf("%d", color)))
+func renderAnsi256(width int) string {
+	var s strings.Builder
+	for i := 0; i < 256; i++ {
+		color := fmt.Sprintf("%d", i)
+		style := lipgloss.NewStyle().
+			Width(width - 5).
+			Background(lipgloss.Color(color))
 
-			box := lipgloss.JoinHorizontal(lipgloss.Left,
-				lipgloss.NewStyle().
-					Width(4).
-					Align(lipgloss.Right).
-					Render(fmt.Sprintf("%d ", color)),
-				style.Render(""),
-			)
-
-			row = append(row, box)
-		}
-		rows = append(rows, row)
+		s.WriteString(lipgloss.JoinHorizontal(lipgloss.Left,
+			lipgloss.NewStyle().Width(4).Render(fmt.Sprintf("%3d:", i)),
+			style.Render(""),
+		))
+		s.WriteString("\n")
 	}
-
-	var content []string
-	for _, row := range rows {
-		content = append(content, lipgloss.JoinHorizontal(lipgloss.Left, row...))
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, content...)
+	return s.String()
 }
 
 func main() {
