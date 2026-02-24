@@ -5,10 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
 )
 
 type model struct {
@@ -40,17 +41,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		verticalMargins := 4
 
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-verticalMargins)
+			m.viewport = viewport.New(viewport.WithWidth(msg.Width), viewport.WithHeight(msg.Height-verticalMargins))
 			m.viewport.YPosition = verticalMargins
 			m.ready = true
 		} else {
-			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - verticalMargins
+			m.viewport.SetWidth(msg.Width)
+			m.viewport.SetHeight(msg.Height - verticalMargins)
 		}
 
-		m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+		m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		step := 17
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("q", "ctrl+c"))):
@@ -61,35 +62,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = (m.activeTab - 1 + 2) % 2
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 			m.rThreshold = clamp(m.rThreshold+step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
 			m.rThreshold = clamp(m.rThreshold-step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
 			m.gThreshold = clamp(m.gThreshold+step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):
 			m.gThreshold = clamp(m.gThreshold-step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 		case key.Matches(msg, key.NewBinding(key.WithKeys("b"))):
 			m.bThreshold = clamp(m.bThreshold+step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 		case key.Matches(msg, key.NewBinding(key.WithKeys("B"))):
 			m.bThreshold = clamp(m.bThreshold-step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
+			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 		}
 	}
 
 	// Assumes that we will only need to adjust the viewport in ANSI 256 tab
 	if m.activeTab == 1 {
 		switch msg := msg.(type) {
-		case tea.KeyMsg:
+		case tea.KeyPressMsg:
 			switch {
 			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))):
-				m.viewport.ViewDown()
+				m.viewport.HalfPageDown()
 				return m, nil
 			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+u"))):
-				m.viewport.ViewUp()
+				m.viewport.HalfPageUp()
 				return m, nil
 			}
 		}
@@ -110,14 +111,14 @@ func clamp(v, min, max int) int {
 	return v
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	if m.width == 0 {
-		return "loading..."
+		return tea.NewView("loading...")
 	}
 
 	var (
-		highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-		inactive  = lipgloss.AdaptiveColor{Light: "#B0B0B0", Dark: "#505050"}
+		highlight = compat.AdaptiveColor{Light: lipgloss.Color("#874BFD"), Dark: lipgloss.Color("#7D56F4")}
+		inactive  = compat.AdaptiveColor{Light: lipgloss.Color("#B0B0B0"), Dark: lipgloss.Color("#505050")}
 
 		activeTabBorder = lipgloss.Border{
 			Top:         "─",
@@ -158,8 +159,8 @@ func (m model) View() string {
 			BorderForeground(highlight)
 
 		statusBarStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}).
-				Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#353533"}).
+				Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#343433"), Dark: lipgloss.Color("#C1C6B2")}).
+				Background(compat.AdaptiveColor{Light: lipgloss.Color("#D9DCCF"), Dark: lipgloss.Color("#353533")}).
 				Padding(0, 1)
 
 		statusText = lipgloss.NewStyle().Inherit(statusBarStyle)
@@ -207,8 +208,8 @@ func (m model) View() string {
 
 	contentHeight := m.height - headerHeight - thresholdsHeight - statusBarHeight
 
-	if m.viewport.Height != contentHeight && contentHeight > 0 {
-		m.viewport.Height = contentHeight
+	if m.viewport.Height() != contentHeight && contentHeight > 0 {
+		m.viewport.SetHeight(contentHeight)
 	}
 
 	doc := strings.Builder{}
@@ -229,7 +230,9 @@ func (m model) View() string {
 	doc.WriteString("\n")
 	doc.WriteString(statusBar)
 
-	return doc.String()
+	v := tea.NewView(doc.String())
+	v.AltScreen = true
+	return v
 }
 
 func max(a, b int) int {
@@ -245,9 +248,9 @@ func getRGB(c int) (r, g, b int) {
 		green uint32
 		blue  uint32
 	)
-	col := lipgloss.Color(c)
+	col := lipgloss.Color(fmt.Sprintf("%d", c))
 	red, green, blue, _ = col.RGBA()
-	return int(red), int(green), int(blue)
+	return int(red >> 8), int(green >> 8), int(blue >> 8)
 	// if c < 16 {
 	// 	// Standard ANSI colors (approximate values)
 	// 	// 0-7: Standard, 8-15: High Intensity
@@ -336,8 +339,8 @@ func renderAnsi256(width, height, rThresh, gThresh, bThresh int) string {
 }
 
 func main() {
-	p := tea.NewProgram(model{}, tea.WithAltScreen())
-	if err := p.Start(); err != nil {
+	p := tea.NewProgram(model{})
+	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v", err)
 		os.Exit(1)
 	}
