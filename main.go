@@ -37,29 +37,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Calculate available height for viewport
-		// Header (Tabs) + Thresholds + Status Bar + Margins
-		// Tabs: 3 lines (border + text) approx? Let's say 2 for now + 1 for gap filling
-		// Thresholds: 1 line
-		// Status Bar: 1 line
-		// Total deduction: ~5-6 lines. Let's calculate dynamically in View, but here we need an estimate or exact.
-		// Let's assume:
-		// Tabs: 2 lines (1 text + 1 border)
-		// Thresholds: 1 line
-		// Status Bar: 1 line
-		// Total: 4 lines overhead.
 		verticalMargins := 4
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, msg.Height-verticalMargins)
-			m.viewport.YPosition = verticalMargins // Approximate
+			m.viewport.YPosition = verticalMargins
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - verticalMargins
 		}
 
-		// Re-render content on resize
 		m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
 
 	case tea.KeyMsg:
@@ -71,7 +59,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = (m.activeTab + 1) % 2
 		case key.Matches(msg, key.NewBinding(key.WithKeys("left", "h"))):
 			m.activeTab = (m.activeTab - 1 + 2) % 2
-		// Threshold controls
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 			m.rThreshold = clamp(m.rThreshold+step, 0, 255)
 			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height, m.rThreshold, m.gThreshold, m.bThreshold))
@@ -93,9 +80,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Handle viewport updates only if active tab is ANSI 256
+	// Assumes that we will only need to adjust the viewport in ANSI 256 tab
 	if m.activeTab == 1 {
-		switch msg := msg.(type) { // Re-evaluate msg for viewport specific keys
+		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch {
 			case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+d"))):
@@ -129,7 +116,6 @@ func (m model) View() string {
 	}
 
 	var (
-		// Styles
 		highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
 		inactive  = lipgloss.AdaptiveColor{Light: "#B0B0B0", Dark: "#505050"}
 
@@ -171,7 +157,6 @@ func (m model) View() string {
 			}).
 			BorderForeground(highlight)
 
-		// Status Bar
 		statusBarStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.AdaptiveColor{Light: "#343433", Dark: "#C1C6B2"}).
 				Background(lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#353533"}).
@@ -187,7 +172,6 @@ func (m model) View() string {
 				MarginRight(1)
 	)
 
-	// Tabs
 	var tabs []string
 	tabsToRender := []string{"ANSI 16", "ANSI 256"}
 
@@ -203,12 +187,10 @@ func (m model) View() string {
 	gap := tabGap.Width(max(0, m.width-lipgloss.Width(row)-2)).Render("")
 	header := lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap)
 
-	// Thresholds
 	thresholds := lipgloss.JoinHorizontal(lipgloss.Center,
 		fmt.Sprintf("Filters (R/G/B): %d/%d/%d", m.rThreshold, m.gThreshold, m.bThreshold),
 	)
 
-	// Status Bar
 	statusBar := statusBarStyle.Width(m.width).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			statusKey.Render("h/l"), statusText.Render("tabs"),
@@ -219,16 +201,12 @@ func (m model) View() string {
 		),
 	)
 
-	// Content
-	// Calculate available height
-	// Header height + Thresholds height + Status Bar height
 	headerHeight := lipgloss.Height(header)
 	thresholdsHeight := lipgloss.Height(thresholds)
 	statusBarHeight := lipgloss.Height(statusBar)
 
 	contentHeight := m.height - headerHeight - thresholdsHeight - statusBarHeight
 
-	// Ensure viewport height is updated if it doesn't match
 	if m.viewport.Height != contentHeight && contentHeight > 0 {
 		m.viewport.Height = contentHeight
 	}
@@ -243,21 +221,10 @@ func (m model) View() string {
 	switch m.activeTab {
 	case 0:
 		tabContent = renderAnsi16(m.width, contentHeight, m.rThreshold, m.gThreshold, m.bThreshold)
-		doc.WriteString(tabContent) // renderAnsi16 handles its own sizing mostly, but we pass contentHeight
+		doc.WriteString(tabContent)
 	case 1:
 		doc.WriteString(m.viewport.View())
 	}
-
-	// Fill remaining vertical space if any (for ANSI 16 which might be short)
-	// Actually ANSI 16 fills height passed to it.
-
-	// Status Bar at bottom
-	// We need to ensure the content pushes the status bar to the bottom or we just append it.
-	// Since we calculated contentHeight to fill the space, appending should place it at the bottom.
-	// However, if content is short (ANSI 16), we might need to pad?
-	// renderAnsi16 uses blockHeight = height / 16. It tries to fill.
-
-	// If we are in viewport mode, viewport fills height.
 
 	doc.WriteString("\n")
 	doc.WriteString(statusBar)
@@ -273,35 +240,43 @@ func max(a, b int) int {
 }
 
 func getRGB(c int) (r, g, b int) {
-	if c < 16 {
-		// Standard ANSI colors (approximate values)
-		// 0-7: Standard, 8-15: High Intensity
-		// Using standard VGA colors
-		palette := [][3]int{
-			{0, 0, 0}, {170, 0, 0}, {0, 170, 0}, {170, 85, 0},
-			{0, 0, 170}, {170, 0, 170}, {0, 170, 170}, {170, 170, 170},
-			{85, 85, 85}, {255, 85, 85}, {85, 255, 85}, {255, 255, 85},
-			{85, 85, 255}, {255, 85, 255}, {85, 255, 255}, {255, 255, 255},
-		}
-		return palette[c][0], palette[c][1], palette[c][2]
-	}
-
-	if c < 232 {
-		// 6x6x6 Color Cube
-		// 16 + 36*r + 6*g + b
-		c -= 16
-		bVal := c % 6
-		gVal := (c / 6) % 6
-		rVal := c / 36
-
-		vals := []int{0, 95, 135, 175, 215, 255}
-		return vals[rVal], vals[gVal], vals[bVal]
-	}
-
-	// Grayscale 232-255
-	// 232 is 8, 255 is 238. Step is 10.
-	val := 8 + (c-232)*10
-	return val, val, val
+	var (
+		red   uint32
+		green uint32
+		blue  uint32
+	)
+	col := lipgloss.Color(c)
+	red, green, blue, _ = col.RGBA()
+	return int(red), int(green), int(blue)
+	// if c < 16 {
+	// 	// Standard ANSI colors (approximate values)
+	// 	// 0-7: Standard, 8-15: High Intensity
+	// 	// Using standard VGA colors
+	// 	palette := [][3]int{
+	// 		{0, 0, 0}, {170, 0, 0}, {0, 170, 0}, {170, 85, 0},
+	// 		{0, 0, 170}, {170, 0, 170}, {0, 170, 170}, {170, 170, 170},
+	// 		{85, 85, 85}, {255, 85, 85}, {85, 255, 85}, {255, 255, 85},
+	// 		{85, 85, 255}, {255, 85, 255}, {85, 255, 255}, {255, 255, 255},
+	// 	}
+	// 	return palette[c][0], palette[c][1], palette[c][2]
+	// }
+	//
+	// if c < 232 {
+	// 	// 6x6x6 Color Cube
+	// 	// 16 + 36*r + 6*g + b
+	// 	c -= 16
+	// 	bVal := c % 6
+	// 	gVal := (c / 6) % 6
+	// 	rVal := c / 36
+	//
+	// 	vals := []int{0, 95, 135, 175, 215, 255}
+	// 	return vals[rVal], vals[gVal], vals[bVal]
+	// }
+	//
+	// // Grayscale 232-255
+	// // 232 is 8, 255 is 238. Step is 10.
+	// val := 8 + (c-232)*10
+	// return val, val, val
 }
 
 func renderAnsi16(width, height, rThresh, gThresh, bThresh int) string {
