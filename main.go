@@ -49,7 +49,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetHeight(msg.Height - verticalMargins)
 		}
 
-		m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+		m.refreshViewport()
 
 	case tea.KeyPressMsg:
 		step := 17
@@ -62,22 +62,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeTab = (m.activeTab - 1 + 2) % 2
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 			m.rThreshold = clamp(m.rThreshold+step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+			m.refreshViewport()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
 			m.rThreshold = clamp(m.rThreshold-step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+			m.refreshViewport()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("g"))):
 			m.gThreshold = clamp(m.gThreshold+step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+			m.refreshViewport()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):
 			m.gThreshold = clamp(m.gThreshold-step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+			m.refreshViewport()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("b"))):
 			m.bThreshold = clamp(m.bThreshold+step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+			m.refreshViewport()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("B"))):
 			m.bThreshold = clamp(m.bThreshold-step, 0, 255)
-			m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
+			m.refreshViewport()
 		}
 	}
 
@@ -99,6 +99,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *model) refreshViewport() {
+	m.viewport.SetContent(renderAnsi256(m.width, m.viewport.Height(), m.rThreshold, m.gThreshold, m.bThreshold))
 }
 
 func clamp(v, min, max int) int {
@@ -251,35 +255,6 @@ func getRGB(c int) (r, g, b int) {
 	col := lipgloss.Color(fmt.Sprintf("%d", c))
 	red, green, blue, _ = col.RGBA()
 	return int(red >> 8), int(green >> 8), int(blue >> 8)
-	// if c < 16 {
-	// 	// Standard ANSI colors (approximate values)
-	// 	// 0-7: Standard, 8-15: High Intensity
-	// 	// Using standard VGA colors
-	// 	palette := [][3]int{
-	// 		{0, 0, 0}, {170, 0, 0}, {0, 170, 0}, {170, 85, 0},
-	// 		{0, 0, 170}, {170, 0, 170}, {0, 170, 170}, {170, 170, 170},
-	// 		{85, 85, 85}, {255, 85, 85}, {85, 255, 85}, {255, 255, 85},
-	// 		{85, 85, 255}, {255, 85, 255}, {85, 255, 255}, {255, 255, 255},
-	// 	}
-	// 	return palette[c][0], palette[c][1], palette[c][2]
-	// }
-	//
-	// if c < 232 {
-	// 	// 6x6x6 Color Cube
-	// 	// 16 + 36*r + 6*g + b
-	// 	c -= 16
-	// 	bVal := c % 6
-	// 	gVal := (c / 6) % 6
-	// 	rVal := c / 36
-	//
-	// 	vals := []int{0, 95, 135, 175, 215, 255}
-	// 	return vals[rVal], vals[gVal], vals[bVal]
-	// }
-	//
-	// // Grayscale 232-255
-	// // 232 is 8, 255 is 238. Step is 10.
-	// val := 8 + (c-232)*10
-	// return val, val, val
 }
 
 func renderAnsi16(width, height, rThresh, gThresh, bThresh int) string {
