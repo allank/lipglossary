@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -314,7 +315,16 @@ func renderAnsi256(width, height, rThresh, gThresh, bThresh int) string {
 }
 
 func main() {
-	p := tea.NewProgram(model{})
+	// PROTOTYPE hook — see prototype_styles.go. Remove both once a variant is chosen.
+	prototype := flag.Bool("prototype", false, "launch the throwaway style-variant prototype")
+	flag.Parse()
+
+	var p *tea.Program
+	if *prototype {
+		p = tea.NewProgram(newProtoModel())
+	} else {
+		p = tea.NewProgram(model{})
+	}
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v", err)
 		os.Exit(1)
