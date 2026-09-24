@@ -1,0 +1,7 @@
+# Build artifacts
+tmp_app
+*.test
+*.out
+
+# OS
+.DS_Store
